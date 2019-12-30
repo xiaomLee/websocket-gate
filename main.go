@@ -68,7 +68,7 @@ func (s *BaseServer) Init(env svc.Environment) error {
 
 func (s *BaseServer) Start() error {
 	s.server = &http.Server{
-		Addr:    ":8087",
+		Addr:    ":" + config.GetConfig("system", "http_listen_port"),
 		Handler: router.NewEngine(),
 	}
 	go func() {
@@ -89,6 +89,10 @@ func (s *BaseServer) Stop() error {
 	if err := s.server.Shutdown(ctx); err != nil {
 		println(err.Error())
 	}
+
+	// close booster
+	booster.CloseBooster()
+	println("close booster success")
 
 	// release source
 	common.ReleaseMysqlDBPool()

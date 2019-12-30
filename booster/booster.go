@@ -1,6 +1,7 @@
 package booster
 
 import (
+	"net/http"
 	"sync"
 	"websocket-gate/logger"
 
@@ -27,14 +28,28 @@ func GetBoosterInstance() *Booster {
 	return booster
 }
 
+func CloseBooster() {
+	for _, h := range booster.hubs {
+		h.stop()
+	}
+	booster.Wait()
+}
+
 func NewBooster() *Booster {
 	return &Booster{
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
+			CheckOrigin:     checkOrigin,
 		},
 		hubs: make(map[string]*Hub),
 	}
+}
+
+func checkOrigin(r *http.Request) bool {
+	// todo
+
+	return true
 }
 
 func (b *Booster) getHub(topic string) *Hub {
@@ -64,19 +79,36 @@ func (b *Booster) WsHandler(c *gin.Context) {
 
 	conn, err := b.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		logger.Error("WsAction", err, "upgrade err")
+		logger.Error("WsHandler", err, "upgrade err")
 		c.String(200, err.Error())
 		return
 	}
 
 	hub := b.getHub(topic)
-	session := &Session{
-		hub:  hub,
-		conn: conn,
-		send: make(chan []byte, 256),
-	}
+	session := newSession(conn)
 
-	session.hub.register <- session
-	go session.writePump()
-	go session.readPump()
+	connectHandler(session)
+	hub.register <- session
+
+	// run write and read
+	session.run()
+	// wait for session close
+	session.Wait()
+
+	hub.unregister <- session
+	disConnectHandler(session)
+}
+
+func disConnectHandler(s *Session) {
+
+}
+
+func messageHandler(s *Session, message []byte) {
+	// todo 判断msg类型 是否broadcast
+	// broadcast
+	//s.hub.broadcast <- message
+}
+
+func connectHandler(s *Session) {
+
 }
