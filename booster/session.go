@@ -2,7 +2,6 @@ package booster
 
 import (
 	"bytes"
-	"log"
 	"sync"
 	"time"
 
@@ -52,19 +51,20 @@ func newSession(conn *websocket.Conn) *Session {
 
 func (s *Session) run() {
 	// write
+	s.Add(1)
 	go func() {
-		s.Add(1)
+		defer s.Done()
 		s.writePump()
-		s.Done()
 	}()
 	// read
+	s.Add(1)
 	go func() {
-		s.Add(1)
+		defer s.Done()
 		s.readPump()
-		s.Done()
 	}()
 }
 
+// close session
 func (s *Session) stop() {
 	s.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	close(s.send)
@@ -75,7 +75,10 @@ func (s *Session) stop() {
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (s *Session) readPump() {
-	defer s.conn.Close()
+	defer func() {
+		println("readPump exit")
+		s.conn.Close()
+	}()
 
 	s.conn.SetReadLimit(maxMessageSize)
 	s.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -83,8 +86,8 @@ func (s *Session) readPump() {
 	for {
 		t, message, err := s.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+			if _, ok := err.(*websocket.CloseError); !ok {
+				errHandler(s, err)
 			}
 			break
 		}
@@ -94,16 +97,12 @@ func (s *Session) readPump() {
 		}
 
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		if string(message) == msgPing {
-			s.send <- []byte(msgPong)
-			continue
-		}
-
 		messageHandler(s, message)
 	}
 }
 
 // writePump pumps messages from the booster to the websocket connection.
+
 // A goroutine running writePump is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
@@ -151,6 +150,14 @@ func (s *Session) writePump() {
 func (s *Session) ping() error {
 	s.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	if err := s.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Session) pong() error {
+	s.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	if err := s.conn.WriteMessage(websocket.PongMessage, nil); err != nil {
 		return err
 	}
 	return nil

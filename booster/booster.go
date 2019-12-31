@@ -59,9 +59,9 @@ func (b *Booster) getHub(topic string) *Hub {
 
 	if !ok {
 		hub = newHub()
-		b.Add(1)
 		go func() {
-			b.Done()
+			b.Add(1)
+			defer b.Done()
 			hub.run()
 		}()
 
@@ -99,16 +99,25 @@ func (b *Booster) WsHandler(c *gin.Context) {
 	disConnectHandler(session)
 }
 
-func disConnectHandler(s *Session) {
+func (b *Booster) PushMessage() {
 
 }
 
+func disConnectHandler(s *Session) {
+	println("disconnect")
+}
+
 func messageHandler(s *Session, message []byte) {
+	println(string(message))
 	// todo 判断msg类型 是否broadcast
 	// broadcast
 	//s.hub.broadcast <- message
 }
 
 func connectHandler(s *Session) {
+	println("connect")
+}
 
+func errHandler(s *Session, err error) {
+	println("error:" + err.Error())
 }
